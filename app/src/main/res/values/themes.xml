@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.MyCalculator" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <style name="Theme.MyCalculator" parent="Theme.Material3.Dark.NoActionBar" />
+
+    <style name="Theme.MyCalculator.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/calc_image</item>
+        <item name="postSplashScreenTheme">@style/Theme.MyCalculator</item>
+    </style>
 </resources>
