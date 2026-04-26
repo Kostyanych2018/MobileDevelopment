@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "286521387179",
+    "project_id": "mobiledevelopment-c450e",
+    "storage_bucket": "mobiledevelopment-c450e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:286521387179:android:7150a6c1ae0458af84efee",
+        "android_client_info": {
+          "package_name": "com.example.mycalculator"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCZ_YIZZNEWlmK5ox1OZOPxLBBJoa07JKw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

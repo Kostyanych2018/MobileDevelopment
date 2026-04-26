@@ -12,12 +12,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.sp
+import com.example.mycalculator.ui.theme.CalcNumberButton
 
 @Composable
 fun CalculatorButton(
     symbol: String,
     modifier: Modifier = Modifier,
-    color: Color = Color.White,
+    color: Color = CalcNumberButton,
     textStyle: TextStyle = TextStyle(),
     onClick: () -> Unit
 ) {
@@ -33,7 +34,7 @@ fun CalculatorButton(
             text = symbol,
             style = textStyle,
             fontSize = 36.sp,
-            color = Color.White
+            color = CalcNumberButton
         )
     }
 }

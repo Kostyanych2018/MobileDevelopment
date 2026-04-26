@@ -18,6 +18,9 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -28,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.TextButton
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -41,30 +45,39 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.mycalculator.data.HistoryEntry
+import com.example.mycalculator.data.HistoryRepository
 import com.example.mycalculator.domain.CalculatorOperation
 import com.example.mycalculator.domain.CalculatorAction
 import com.example.mycalculator.domain.CalculatorState
-import com.example.mycalculator.ui.theme.CalcBackground
 import com.example.mycalculator.ui.theme.CalcError
 import com.example.mycalculator.ui.theme.CalcNumberButton
-import com.example.mycalculator.ui.theme.CalcOperatorButton
-import com.example.mycalculator.ui.theme.CalcUtilityButton
+import com.example.mycalculator.ui.theme.CalculatorPalette
 import kotlinx.coroutines.launch
 import java.util.Locale
 
 @Composable
 fun CalculatorScreen(
-    state: CalculatorState, onAction: (CalculatorAction) -> Unit
+    state: CalculatorState,
+    onAction: (CalculatorAction) -> Unit,
+    palette: CalculatorPalette = CalculatorPalette.defaults()
 ) {
     val numberStyle = TextStyle(fontSize = 30.sp, fontWeight = FontWeight.SemiBold)
     val actionStyle = TextStyle(fontSize = 30.sp, fontWeight = FontWeight.Bold)
     val utilityStyle = TextStyle(fontSize = 30.sp, fontWeight = FontWeight.Medium)
+    val miniUtilityStyle = TextStyle(fontSize = 20.sp, fontWeight = FontWeight.Medium)
+
     val context = LocalContext.current
     val clipboard = LocalClipboard.current
     val snackbarHostState = remember { SnackbarHostState() }
+
     val scope = rememberCoroutineScope()
     var tts by remember { mutableStateOf<TextToSpeech?>(null) }
     var isTtsReady by remember { mutableStateOf(false) }
+
+    var showHistory by remember { mutableStateOf(false) }
+    var historyItems by remember { mutableStateOf<List<HistoryEntry>>(emptyList()) }
+    val historyRepository = remember { HistoryRepository() }
 
     DisposableEffect(context) {
         var localTts: TextToSpeech? = null
@@ -91,7 +104,7 @@ fun CalculatorScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(CalcBackground)
+            .background(palette.background)
             .padding(16.dp),
     ) {
         Column(
@@ -144,42 +157,13 @@ fun CalculatorScreen(
                         Text(
                             text = state.displayText,
                             fontSize = displayFontSize,
-                            color = if (state.isError) CalcError else Color.White,
+                            color = if (state.isError) CalcError else palette.text,
                             maxLines = 1,
                             softWrap = false,
                             overflow = TextOverflow.Clip,
                             textAlign = TextAlign.End,
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.fillMaxWidth()
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        CalculatorButton(
-                            symbol = "\uD83D\uDD0A",
-                            modifier = Modifier.size(48.dp),
-                            color = CalcUtilityButton,
-                            textStyle = utilityStyle
-                        ) {
-                            val textToSpeak = state.displayText.trim()
-                            scope.launch {
-                                when {
-                                    textToSpeak.isBlank() -> {
-                                        snackbarHostState.showSnackbar("Nothing to read")
-                                    }
-
-                                    !isTtsReady || tts == null -> {
-                                        snackbarHostState.showSnackbar("Text-to-Speech unavailable")
-                                    }
-
-                                    else -> {
-                                        tts?.speak(
-                                            textToSpeak,
-                                            TextToSpeech.QUEUE_FLUSH,
-                                            null,
-                                            "calculator_readout"
-                                        )
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
 
@@ -187,31 +171,86 @@ fun CalculatorScreen(
                     val horizontalGap = 10.dp
                     val buttonSize = ((maxWidth - horizontalGap * 3) / 4f).coerceIn(66.dp, 90.dp)
                     val wideButtonWidth = buttonSize * 2 + horizontalGap
+                    val miniButtonSize = (buttonSize * 0.72f).coerceIn(44.dp, 64.dp)
 
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         CalculatorRow {
                             CalculatorButton(
+                                symbol = "⌛",
+                                modifier = Modifier.size(miniButtonSize),
+                                color = palette.utilityButton,
+                                textStyle = miniUtilityStyle
+                            ) {
+                                scope.launch {
+                                    historyRepository.loadRecentHistory(
+                                        limit = 20,
+                                        onSuccess = { items ->
+                                            historyItems = items
+                                            showHistory = true
+                                        },
+                                        onError = {
+                                            scope.launch {
+                                                snackbarHostState.showSnackbar("Failed to load history")
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+                            CalculatorButton(
+                                symbol = "\uD83D\uDD0A",
+                                modifier = Modifier.size(miniButtonSize),
+                                color = palette.utilityButton,
+                                textStyle = miniUtilityStyle
+                            ) {
+                                val textToSpeak = state.displayText.trim()
+                                scope.launch {
+                                    when {
+                                        textToSpeak.isBlank() -> {
+                                            snackbarHostState.showSnackbar("Nothing to read")
+                                        }
+
+                                        !isTtsReady || tts == null -> {
+                                            snackbarHostState.showSnackbar("Text-to-Speech unavailable")
+                                        }
+
+                                        else -> {
+                                            tts?.speak(
+                                                textToSpeak,
+                                                TextToSpeech.QUEUE_FLUSH,
+                                                null,
+                                                "calculator_readout"
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.size(miniButtonSize))
+                            Spacer(modifier = Modifier.size(miniButtonSize))
+                        }
+
+                        CalculatorRow {
+                            CalculatorButton(
                                 symbol = "AC",
                                 modifier = Modifier.size(buttonSize),
-                                color = CalcUtilityButton,
+                                color = palette.utilityButton,
                                 textStyle = utilityStyle
                             ) { onAction(CalculatorAction.Clear) }
                             CalculatorButton(
                                 symbol = "Del",
                                 modifier = Modifier.size(buttonSize),
-                                color = CalcUtilityButton,
+                                color = palette.utilityButton,
                                 textStyle = utilityStyle
                             ) { onAction(CalculatorAction.Delete) }
                             CalculatorButton(
                                 symbol = ".",
                                 modifier = Modifier.size(buttonSize),
-                                color = CalcUtilityButton,
+                                color = palette.utilityButton,
                                 textStyle = utilityStyle
                             ) { onAction(CalculatorAction.Decimal) }
                             CalculatorButton(
                                 symbol = "/",
                                 modifier = Modifier.size(buttonSize),
-                                color = CalcOperatorButton,
+                                color = palette.operatorButton,
                                 textStyle = actionStyle
                             ) { onAction(CalculatorAction.Operation(CalculatorOperation.DIVIDE)) }
                         }
@@ -220,19 +259,22 @@ fun CalculatorScreen(
                             NumberButton(
                                 "7",
                                 numberStyle,
-                                buttonSize
+                                buttonSize,
+                                palette.numberButton
                             ) { onAction(CalculatorAction.Number(7)) }
                             NumberButton(
                                 "8",
                                 numberStyle,
-                                buttonSize
+                                buttonSize,
+                                palette.numberButton
                             ) { onAction(CalculatorAction.Number(8)) }
                             NumberButton(
                                 "9",
                                 numberStyle,
-                                buttonSize
+                                buttonSize,
+                                palette.numberButton
                             ) { onAction(CalculatorAction.Number(9)) }
-                            OperatorButton("*", actionStyle, buttonSize) {
+                            OperatorButton("*", actionStyle, buttonSize, palette.operatorButton) {
                                 onAction(CalculatorAction.Operation(CalculatorOperation.MULTIPLY))
                             }
                         }
@@ -241,19 +283,22 @@ fun CalculatorScreen(
                             NumberButton(
                                 "4",
                                 numberStyle,
-                                buttonSize
+                                buttonSize,
+                                palette.numberButton
                             ) { onAction(CalculatorAction.Number(4)) }
                             NumberButton(
                                 "5",
                                 numberStyle,
-                                buttonSize
+                                buttonSize,
+                                palette.numberButton
                             ) { onAction(CalculatorAction.Number(5)) }
                             NumberButton(
                                 "6",
                                 numberStyle,
-                                buttonSize
+                                buttonSize,
+                                palette.numberButton
                             ) { onAction(CalculatorAction.Number(6)) }
-                            OperatorButton("-", actionStyle, buttonSize) {
+                            OperatorButton("-", actionStyle, buttonSize, palette.operatorButton) {
                                 onAction(CalculatorAction.Operation(CalculatorOperation.SUBTRACT))
                             }
                         }
@@ -262,19 +307,22 @@ fun CalculatorScreen(
                             NumberButton(
                                 "1",
                                 numberStyle,
-                                buttonSize
+                                buttonSize,
+                                palette.numberButton
                             ) { onAction(CalculatorAction.Number(1)) }
                             NumberButton(
                                 "2",
                                 numberStyle,
-                                buttonSize
+                                buttonSize,
+                                palette.numberButton
                             ) { onAction(CalculatorAction.Number(2)) }
                             NumberButton(
                                 "3",
                                 numberStyle,
-                                buttonSize
+                                buttonSize,
+                                palette.numberButton
                             ) { onAction(CalculatorAction.Number(3)) }
-                            OperatorButton("+", actionStyle, buttonSize) {
+                            OperatorButton("+", actionStyle, buttonSize, palette.operatorButton) {
                                 onAction(CalculatorAction.Operation(CalculatorOperation.ADD))
                             }
                         }
@@ -292,7 +340,7 @@ fun CalculatorScreen(
                                     width = wideButtonWidth,
                                     height = buttonSize
                                 ),
-                                color = CalcNumberButton,
+                                color = palette.numberButton,
                                 textStyle = numberStyle
                             ) { onAction(CalculatorAction.Number(0)) }
                             CalculatorButton(
@@ -301,7 +349,7 @@ fun CalculatorScreen(
                                     width = wideButtonWidth,
                                     height = buttonSize
                                 ),
-                                color = CalcOperatorButton,
+                                color = palette.operatorButton,
                                 textStyle = actionStyle
                             ) { onAction(CalculatorAction.Calculate) }
                         }
@@ -317,6 +365,44 @@ fun CalculatorScreen(
                 .navigationBarsPadding()
                 .padding(bottom = 8.dp)
         )
+
+        if (showHistory) {
+            AlertDialog(
+                onDismissRequest = { showHistory = false },
+                confirmButton = {
+                    TextButton(onClick = { showHistory = false }) {
+                        Text("Close")
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            historyRepository.clearAllHistory(
+                                onSuccess = {
+                                    historyItems = emptyList()
+                                    showHistory = false
+                                },
+                                onError = {  }
+                            )
+                        }
+                    ) {
+                        Text("Clear All", color = Color.Red)
+                    }
+                },
+                title = { Text("History") },
+                text = {
+                    if (historyItems.isEmpty()) {
+                        Text("No history yet")
+                    } else {
+                        LazyColumn {
+                            items(historyItems) { item ->
+                                Text("${item.expression} = ${item.result}")
+                            }
+                        }
+                    }
+                }
+            )
+        }
     }
 }
 
@@ -324,7 +410,7 @@ fun CalculatorScreen(
 private fun CalculatorRow(content: @Composable RowScope.() -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+        horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.Start),
         content = content
     )
 }
@@ -334,12 +420,13 @@ private fun NumberButton(
     symbol: String,
     style: TextStyle,
     buttonSize: Dp,
+    color: Color,
     onClick: () -> Unit
 ) {
     CalculatorButton(
         symbol = symbol,
         modifier = Modifier.size(buttonSize),
-        color = CalcNumberButton,
+        color = color,
         textStyle = style
     ) { onClick() }
 }
@@ -349,12 +436,13 @@ private fun OperatorButton(
     symbol: String,
     style: TextStyle,
     buttonSize: Dp,
+    color: Color,
     onClick: () -> Unit
 ) {
     CalculatorButton(
         symbol = symbol,
         modifier = Modifier.size(buttonSize),
-        color = CalcOperatorButton,
+        color = color,
         textStyle = style
     ) { onClick() }
 }
