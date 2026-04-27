@@ -38,8 +38,12 @@ import com.example.mycalculator.ui.theme.MyCalculatorTheme
 import com.google.firebase.messaging.FirebaseMessaging
 
 class MainActivity : FragmentActivity() {
+    private var isLoadingTheme = true
+
     override fun onCreate(savedInstanceState: Bundle?) {
-        installSplashScreen()
+        val splashScreen = installSplashScreen()
+        splashScreen.setKeepOnScreenCondition { isLoadingTheme }
+
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
@@ -63,9 +67,11 @@ class MainActivity : FragmentActivity() {
                             val parsed = CalculatorPalette.fromRemote(remote)
                             Log.d("ThemeDebug", "Parsed palette: $parsed")
                             palette = parsed
+                            isLoadingTheme = false
                         },
                         onError = {
                             Log.e("ThemeDebug", "Theme load failed", it)
+                            isLoadingTheme = false
                         }
                     )
                 }
