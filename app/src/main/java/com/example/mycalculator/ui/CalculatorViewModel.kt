@@ -5,14 +5,24 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import com.example.mycalculator.data.HistoryEntry
 import com.example.mycalculator.data.HistoryRepository
+import com.example.mycalculator.data.SecurityRepository
 import com.example.mycalculator.domain.CalculatorAction
 import com.example.mycalculator.domain.CalculatorOperation
 import com.example.mycalculator.domain.CalculatorState
 
-class CalculatorViewModel : ViewModel() {
+class CalculatorViewModel(
+    private val securityRepository: SecurityRepository
+) : ViewModel() {
     var state by mutableStateOf(CalculatorState())
+        private set
+
+    var isUnlocked by mutableStateOf(false)
+        private set
+
+    var hasPin by mutableStateOf(securityRepository.hasPin())
         private set
 
     private val historyRepository = HistoryRepository()
@@ -27,6 +37,44 @@ class CalculatorViewModel : ViewModel() {
             CalculatorAction.Delete -> performDelete()
             CalculatorAction.Calculate -> performCalculation()
         }
+    }
+
+    fun setupPin(pin: String) {
+        securityRepository.savePin(pin)
+        hasPin = true
+        isUnlocked = true
+    }
+
+    fun verifyPin(pin: String): Boolean {
+        val ok = securityRepository.verifyPin(pin)
+        if (ok) isUnlocked = true
+        return ok
+    }
+
+    fun unlock() {
+        isUnlocked = true
+    }
+
+    fun lock() {
+        isUnlocked = false
+    }
+
+    fun resetPinAndWipe(onComplete: () -> Unit) {
+        historyRepository.clearAllHistory(
+            onSuccess = {
+                securityRepository.clearPin()
+                hasPin = false
+                isUnlocked = false
+                onComplete()
+            },
+            onError = { error ->
+                Log.e("AuthDebug", "History wipe failed", error)
+                securityRepository.clearPin()
+                hasPin = false
+                isUnlocked = false
+                onComplete()
+            }
+        )
     }
 
     private fun enterNumber(number: Int) {
@@ -167,5 +215,14 @@ class CalculatorViewModel : ViewModel() {
 
     companion object {
         private const val MAX_NUM_LENGTH = 12
+    }
+}
+
+class CalculatorViewModelFactory(
+    private val securityRepository: SecurityRepository
+) : ViewModelProvider.Factory {
+    @Suppress("UNCHECKED_CAST")
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        return CalculatorViewModel(securityRepository) as T
     }
 }

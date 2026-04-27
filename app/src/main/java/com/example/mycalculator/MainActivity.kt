@@ -7,12 +7,12 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
-import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.fragment.app.FragmentActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -27,14 +27,17 @@ import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.mycalculator.data.MyFirebaseMessagingService
+import com.example.mycalculator.data.SecurityRepository
 import com.example.mycalculator.data.ThemeRepository
+import com.example.mycalculator.ui.AuthManager
 import com.example.mycalculator.ui.CalculatorScreen
 import com.example.mycalculator.ui.CalculatorViewModel
+import com.example.mycalculator.ui.CalculatorViewModelFactory
 import com.example.mycalculator.ui.theme.CalculatorPalette
 import com.example.mycalculator.ui.theme.MyCalculatorTheme
 import com.google.firebase.messaging.FirebaseMessaging
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
@@ -43,11 +46,15 @@ class MainActivity : ComponentActivity() {
         createNotificationChannel()
         logFcmToken()
 
+        val securityRepository = SecurityRepository(applicationContext)
+        val authManager = AuthManager(this)
+        val viewModelFactory = CalculatorViewModelFactory(securityRepository)
+
         setContent {
             MyCalculatorTheme {
                 var palette by remember { mutableStateOf(CalculatorPalette.defaults()) }
                 val themeRepository = remember { ThemeRepository() }
-                val viewModel: CalculatorViewModel = viewModel()
+                val viewModel: CalculatorViewModel = viewModel(factory = viewModelFactory)
 
                 LaunchedEffect(Unit) {
                     themeRepository.loadTheme(
@@ -77,7 +84,14 @@ class MainActivity : ComponentActivity() {
                 CalculatorScreen(
                     state = viewModel.state,
                     onAction = viewModel::onAction,
-                    palette = palette
+                    palette = palette,
+                    isUnlocked = viewModel.isUnlocked,
+                    hasPin = viewModel.hasPin,
+                    authManager = authManager,
+                    onSetupPin = viewModel::setupPin,
+                    onVerifyPin = viewModel::verifyPin,
+                    onUnlockSuccess = viewModel::unlock,
+                    onResetAndWipe = viewModel::resetPinAndWipe
                 )
             }
         }

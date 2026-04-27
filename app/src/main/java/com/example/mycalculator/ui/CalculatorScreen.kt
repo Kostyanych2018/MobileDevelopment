@@ -2,6 +2,7 @@ package com.example.mycalculator.ui
 
 import android.content.ClipData
 import android.speech.tts.TextToSpeech
+import androidx.fragment.app.FragmentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -51,16 +52,24 @@ import com.example.mycalculator.domain.CalculatorOperation
 import com.example.mycalculator.domain.CalculatorAction
 import com.example.mycalculator.domain.CalculatorState
 import com.example.mycalculator.ui.theme.CalcError
-import com.example.mycalculator.ui.theme.CalcNumberButton
 import com.example.mycalculator.ui.theme.CalculatorPalette
 import kotlinx.coroutines.launch
 import java.util.Locale
+
+private enum class ProtectedFeature { HISTORY, TTS }
 
 @Composable
 fun CalculatorScreen(
     state: CalculatorState,
     onAction: (CalculatorAction) -> Unit,
-    palette: CalculatorPalette = CalculatorPalette.defaults()
+    palette: CalculatorPalette = CalculatorPalette.defaults(),
+    isUnlocked: Boolean = true,
+    hasPin: Boolean = false,
+    authManager: AuthManager? = null,
+    onSetupPin: (String) -> Unit = {},
+    onVerifyPin: (String) -> Boolean = { false },
+    onUnlockSuccess: () -> Unit = {},
+    onResetAndWipe: (onComplete: () -> Unit) -> Unit = { it() }
 ) {
     val numberStyle = TextStyle(fontSize = 30.sp, fontWeight = FontWeight.SemiBold)
     val actionStyle = TextStyle(fontSize = 30.sp, fontWeight = FontWeight.Bold)
@@ -78,6 +87,12 @@ fun CalculatorScreen(
     var showHistory by remember { mutableStateOf(false) }
     var historyItems by remember { mutableStateOf<List<HistoryEntry>>(emptyList()) }
     val historyRepository = remember { HistoryRepository() }
+    var showSetupPinDialog by remember { mutableStateOf(false) }
+    var showEnterPinDialog by remember { mutableStateOf(false) }
+    var showResetWarningDialog by remember { mutableStateOf(false) }
+    var pinError by remember { mutableStateOf<String?>(null) }
+
+    var pendingProtectedFeature by remember { mutableStateOf<ProtectedFeature?>(null) }
 
     DisposableEffect(context) {
         var localTts: TextToSpeech? = null
@@ -94,10 +109,91 @@ fun CalculatorScreen(
         tts = localTts
 
         onDispose {
-            localTts.stop()
-            localTts.shutdown()
+            localTts?.stop()
+            localTts?.shutdown()
             tts = null
             isTtsReady = false
+        }
+    }
+
+    val openHistory: () -> Unit = {
+        scope.launch {
+            historyRepository.loadRecentHistory(
+                limit = 20,
+                onSuccess = { items ->
+                    historyItems = items
+                    showHistory = true
+                },
+                onError = {
+                    scope.launch {
+                        snackbarHostState.showSnackbar("Failed to load history")
+                    }
+                }
+            )
+        }
+    }
+
+    val speakCurrentText: () -> Unit = {
+        val textToSpeak = state.displayText.trim()
+        scope.launch {
+            when {
+                textToSpeak.isBlank() -> {
+                    snackbarHostState.showSnackbar("Nothing to read")
+                }
+
+                !isTtsReady || tts == null -> {
+                    snackbarHostState.showSnackbar("Text-to-Speech unavailable")
+                }
+
+                else -> {
+                    tts?.speak(
+                        textToSpeak,
+                        TextToSpeech.QUEUE_FLUSH,
+                        null,
+                        "calculator_readout"
+                    )
+                }
+            }
+        }
+    }
+
+    val runPendingProtectedFeature: () -> Unit = {
+        when (pendingProtectedFeature) {
+            ProtectedFeature.HISTORY -> openHistory()
+            ProtectedFeature.TTS -> speakCurrentText()
+            null -> Unit
+        }
+        pendingProtectedFeature = null
+    }
+
+    val requestProtectedAccess: (ProtectedFeature) -> Unit = { target ->
+        pendingProtectedFeature = target
+        pinError = null
+
+        if (!hasPin) {
+            showSetupPinDialog = true
+        } else if (isUnlocked) {
+            runPendingProtectedFeature()
+        } else {
+            val activity = context as? FragmentActivity
+            val canUseBiometrics = authManager != null && activity != null && authManager.canUseBiometrics()
+            if (canUseBiometrics) {
+                authManager.authenticate(
+                    onSuccess = {
+                        onUnlockSuccess()
+                        runPendingProtectedFeature()
+                    },
+                    onFallbackToPin = {
+                        showEnterPinDialog = true
+                    },
+                    onError = { message ->
+                        pinError = message
+                        showEnterPinDialog = true
+                    }
+                )
+            } else {
+                showEnterPinDialog = true
+            }
         }
     }
 
@@ -181,20 +277,7 @@ fun CalculatorScreen(
                                 color = palette.utilityButton,
                                 textStyle = miniUtilityStyle
                             ) {
-                                scope.launch {
-                                    historyRepository.loadRecentHistory(
-                                        limit = 20,
-                                        onSuccess = { items ->
-                                            historyItems = items
-                                            showHistory = true
-                                        },
-                                        onError = {
-                                            scope.launch {
-                                                snackbarHostState.showSnackbar("Failed to load history")
-                                            }
-                                        }
-                                    )
-                                }
+                                requestProtectedAccess(ProtectedFeature.HISTORY)
                             }
                             CalculatorButton(
                                 symbol = "\uD83D\uDD0A",
@@ -202,27 +285,7 @@ fun CalculatorScreen(
                                 color = palette.utilityButton,
                                 textStyle = miniUtilityStyle
                             ) {
-                                val textToSpeak = state.displayText.trim()
-                                scope.launch {
-                                    when {
-                                        textToSpeak.isBlank() -> {
-                                            snackbarHostState.showSnackbar("Nothing to read")
-                                        }
-
-                                        !isTtsReady || tts == null -> {
-                                            snackbarHostState.showSnackbar("Text-to-Speech unavailable")
-                                        }
-
-                                        else -> {
-                                            tts?.speak(
-                                                textToSpeak,
-                                                TextToSpeech.QUEUE_FLUSH,
-                                                null,
-                                                "calculator_readout"
-                                            )
-                                        }
-                                    }
-                                }
+                                requestProtectedAccess(ProtectedFeature.TTS)
                             }
                             Spacer(modifier = Modifier.size(miniButtonSize))
                             Spacer(modifier = Modifier.size(miniButtonSize))
@@ -400,6 +463,69 @@ fun CalculatorScreen(
                             }
                         }
                     }
+                }
+            )
+        }
+
+        if (showSetupPinDialog) {
+            SetupPinDialog(
+                onConfirm = { pin ->
+                    onSetupPin(pin)
+                    showSetupPinDialog = false
+                    onUnlockSuccess()
+                    runPendingProtectedFeature()
+                },
+                onDismiss = {
+                    showSetupPinDialog = false
+                    pendingProtectedFeature = null
+                }
+            )
+        }
+
+        if (showEnterPinDialog) {
+            EnterPinDialog(
+                onConfirm = { pin ->
+                    when {
+                        pin.length != 4 -> {
+                            pinError = "PIN must be 4 digits"
+                        }
+
+                        onVerifyPin(pin) -> {
+                            pinError = null
+                            showEnterPinDialog = false
+                            runPendingProtectedFeature()
+                        }
+
+                        else -> {
+                            pinError = "Incorrect PIN"
+                        }
+                    }
+                },
+                onForgotPin = {
+                    showEnterPinDialog = false
+                    showResetWarningDialog = true
+                },
+                onDismiss = {
+                    showEnterPinDialog = false
+                    pendingProtectedFeature = null
+                },
+                errorMessage = pinError
+            )
+        }
+
+        if (showResetWarningDialog) {
+            ResetWarningDialog(
+                onConfirm = {
+                    onResetAndWipe {
+                        showResetWarningDialog = false
+                        pendingProtectedFeature = null
+                        pinError = null
+                        showSetupPinDialog = true
+                    }
+                },
+                onDismiss = {
+                    showResetWarningDialog = false
+                    pendingProtectedFeature = null
                 }
             )
         }

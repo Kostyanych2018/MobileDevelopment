@@ -1,5 +1,6 @@
 [versions]
 agp = "9.1.1"
+biometric = "1.2.0-alpha05"
 coreKtx = "1.10.1"
 firebaseBom = "34.12.0"
 junit = "4.13.2"
@@ -10,12 +11,15 @@ lifecycleViewmodelCompose = "2.9.4"
 activityCompose = "1.8.0"
 kotlin = "2.2.10"
 composeBom = "2026.02.01"
+securityCrypto = "1.1.0-alpha06"
 uiText = "1.10.6"
 coreSplashscreen = "1.0.1"
 material = "1.13.0"
 
 [libraries]
+androidx-biometric = { module = "androidx.biometric:biometric", version.ref = "biometric" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+androidx-security-crypto = { module = "androidx.security:security-crypto", version.ref = "securityCrypto" }
 firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebaseBom" }
 firebase-firestore = { module = "com.google.firebase:firebase-firestore" }
 firebase-messaging = { module = "com.google.firebase:firebase-messaging" }
